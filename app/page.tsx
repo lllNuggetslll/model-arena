@@ -4,38 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OpenRouterModel } from "@/lib/openrouter";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ResultCard, type Result } from "@/components/ResultCard";
+import { MODES, getMode, type ModeId } from "@/lib/modes";
+import { parseTests, type TestCase } from "@/lib/testrunner";
 
 const MAX_MODELS = 6;
-
-const DEFAULT_SYSTEM =
-  "You are an expert front-end game and app developer. When asked to build something, respond with a SINGLE, complete, self-contained HTML document that runs on its own with NO external dependencies, network requests, CDNs, or asset URLs. Put all CSS in a <style> tag and all JavaScript in a <script> tag inside the document. Make it playable and polished. Output ONLY the HTML inside one ```html code block — no explanation before or after.";
-
-const EXAMPLE_PROMPTS: { label: string; text: string }[] = [
-  {
-    label: "🐍 Snake",
-    text: "Build a playable Snake game with arrow-key controls, a live score counter, increasing speed, and a game-over screen with a restart button.",
-  },
-  {
-    label: "🧱 Breakout",
-    text: "Create a Breakout / brick-breaker game with a mouse-controlled paddle, colorful bricks, ball physics, lives, and a win screen.",
-  },
-  {
-    label: "🟦 Tetris",
-    text: "Make a Tetris clone with keyboard controls, all 7 tetromino shapes, line clearing, a next-piece preview, and a score display.",
-  },
-  {
-    label: "🔢 2048",
-    text: "Build a 2048 puzzle game on a 4x4 grid with arrow-key controls, smooth tile-merge animations, a score, and a game-over state.",
-  },
-  {
-    label: "🐦 Flappy",
-    text: "Create a Flappy Bird style game: press space or click to flap, scrolling pipe obstacles with gaps, collision detection, and a score.",
-  },
-  {
-    label: "🎨 Particles",
-    text: "Build an interactive particle system on a full-screen canvas that reacts to the mouse, with colorful trails and smooth 60fps animation.",
-  },
-];
 
 // Preferred defaults — intersected with whatever OpenRouter currently offers.
 const PREFERRED_DEFAULTS = [
@@ -52,13 +24,23 @@ export default function Home() {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
-  const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[0].text);
-  const [selfContained, setSelfContained] = useState(true);
+  const [modeId, setModeId] = useState<ModeId>("game");
+  const [prompt, setPrompt] = useState(MODES[0].examples[0].text);
+  // The mode the current results were generated with, so switching modes
+  // afterwards doesn't re-render old results the wrong way.
+  const [runModeId, setRunModeId] = useState<ModeId>("game");
+  // Code Tests mode: one test per line, and whether models get to see them.
+  const [testsText, setTestsText] = useState(getMode("tests").examples[0].tests ?? "");
+  const [shareTests, setShareTests] = useState(false);
+  // Tests snapshotted at run time, so editing the box doesn't re-score old code.
+  const [runTests, setRunTests] = useState<TestCase[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
   const [running, setRunning] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  const mode = getMode(modeId);
+  const parsedTests = useMemo(() => parseTests(testsText), [testsText]);
 
   // Restore persisted settings.
   useEffect(() => {
@@ -69,6 +51,11 @@ export default function Home() {
       if (sel) setSelected(JSON.parse(sel));
       const p = localStorage.getItem("or_prompt");
       if (p) setPrompt(p);
+      const m = localStorage.getItem("or_mode");
+      if (m) setModeId(getMode(m).id);
+      const t = localStorage.getItem("or_tests");
+      if (t !== null) setTestsText(t);
+      setShareTests(localStorage.getItem("or_share_tests") === "1");
     } catch {
       /* ignore */
     }
@@ -82,10 +69,28 @@ export default function Home() {
       localStorage.setItem("or_api_key", apiKey);
       localStorage.setItem("or_selected", JSON.stringify(selected));
       localStorage.setItem("or_prompt", prompt);
+      localStorage.setItem("or_mode", modeId);
+      localStorage.setItem("or_tests", testsText);
+      localStorage.setItem("or_share_tests", shareTests ? "1" : "0");
     } catch {
       /* ignore */
     }
-  }, [apiKey, selected, prompt, hydrated]);
+  }, [apiKey, selected, prompt, modeId, testsText, shareTests, hydrated]);
+
+  const applyExample = useCallback((ex: { text: string; tests?: string }) => {
+    setPrompt(ex.text);
+    if (ex.tests !== undefined) setTestsText(ex.tests);
+  }, []);
+
+  const switchMode = useCallback(
+    (id: ModeId) => {
+      // Swap in the new mode's first example unless the user wrote their own prompt.
+      const isExample = MODES.some((m) => m.examples.some((ex) => ex.text === prompt));
+      if (isExample || !prompt.trim()) applyExample(getMode(id).examples[0]);
+      setModeId(id);
+    },
+    [prompt, applyExample],
+  );
 
   // Load the model catalogue.
   useEffect(() => {
@@ -135,6 +140,12 @@ export default function Home() {
 
   const canRun = prompt.trim().length > 0 && selected.length > 0 && !running;
 
+  // In Code Tests mode, optionally show the models the tests they'll be graded on.
+  const fullPrompt =
+    mode.render === "tests" && shareTests && parsedTests.length > 0
+      ? `${prompt}\n\nYour code will be checked with these tests (\`expression ==> expected\`, or an expression that must be truthy):\n\`\`\`\n${parsedTests.map((t) => t.source).join("\n")}\n\`\`\``
+      : prompt;
+
   const streamOne = useCallback(
     async (model: string, signal: AbortSignal) => {
       const started = performance.now();
@@ -147,12 +158,7 @@ export default function Home() {
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt,
-            model,
-            apiKey,
-            system: selfContained ? DEFAULT_SYSTEM : undefined,
-          }),
+          body: JSON.stringify({ prompt: fullPrompt, model, apiKey, system: mode.system }),
           signal,
         });
 
@@ -177,9 +183,14 @@ export default function Home() {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
+          const now = performance.now();
           setResults((prev) => ({
             ...prev,
-            [model]: { ...prev[model], text: (prev[model]?.text ?? "") + chunk },
+            [model]: {
+              ...prev[model],
+              text: (prev[model]?.text ?? "") + chunk,
+              firstTokenAt: prev[model]?.firstTokenAt ?? (chunk ? now : undefined),
+            },
           }));
         }
         setResults((prev) => ({
@@ -205,7 +216,7 @@ export default function Home() {
         }));
       }
     },
-    [prompt, apiKey, selfContained],
+    [fullPrompt, apiKey, mode],
   );
 
   const run = useCallback(async () => {
@@ -213,13 +224,15 @@ export default function Home() {
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
+    setRunModeId(modeId);
+    setRunTests(parsedTests);
     setResults(
       Object.fromEntries(selected.map((id) => [id, { text: "", status: "idle" } as Result])),
     );
     await Promise.all(selected.map((id) => streamOne(id, controller.signal)));
     setRunning(false);
     abortRef.current = null;
-  }, [canRun, selected, streamOne]);
+  }, [canRun, selected, streamOne, modeId, parsedTests]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -245,8 +258,8 @@ export default function Home() {
             🏟️ Model Arena
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
-            Run one coding prompt across multiple AI models via OpenRouter and compare the
-            code — and the live game — side by side.
+            Run one prompt across multiple AI models via OpenRouter and compare the results
+            side by side — playable games, chat answers, or SVG drawings.
           </p>
         </div>
       </header>
@@ -294,12 +307,26 @@ export default function Home() {
         {/* Prompt */}
         <div className="rounded-xl border border-surface-border bg-surface-raised p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-slate-300">Prompt</span>
+            <div className="flex rounded-lg border border-surface-border bg-surface p-0.5">
+              {MODES.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => switchMode(m.id)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    m.id === modeId
+                      ? "bg-accent/25 text-indigo-100"
+                      : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
             <div className="ml-auto flex flex-wrap gap-1.5">
-              {EXAMPLE_PROMPTS.map((ex) => (
+              {mode.examples.map((ex) => (
                 <button
                   key={ex.label}
-                  onClick={() => setPrompt(ex.text)}
+                  onClick={() => applyExample(ex)}
                   className="rounded-full border border-surface-border bg-surface px-2.5 py-1 text-xs text-slate-300 hover:border-accent/60 hover:text-white"
                 >
                   {ex.label}
@@ -311,18 +338,43 @@ export default function Home() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
-            placeholder="Describe the game or app to build…"
+            placeholder={mode.placeholder}
             className="w-full resize-y rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-accent"
           />
-          <label className="mt-2 flex w-fit cursor-pointer select-none items-center gap-2 text-xs text-slate-400">
-            <input
-              type="checkbox"
-              checked={selfContained}
-              onChange={(e) => setSelfContained(e.target.checked)}
-              className="accent-indigo-500"
-            />
-            Self-contained HTML mode (asks each model for one runnable file so the preview works)
-          </label>
+          <p className="mt-1.5 text-xs text-slate-500">{mode.blurb}</p>
+
+          {mode.render === "tests" && (
+            <div className="mt-3">
+              <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-sm font-medium text-slate-300">Test cases</span>
+                <span className="font-mono text-xs text-slate-500">
+                  {parsedTests.length} test{parsedTests.length === 1 ? "" : "s"}
+                </span>
+                <label className="ml-auto flex cursor-pointer select-none items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={shareTests}
+                    onChange={(e) => setShareTests(e.target.checked)}
+                    className="accent-indigo-500"
+                  />
+                  Show tests to models (off = hidden tests, a fairer benchmark)
+                </label>
+              </div>
+              <textarea
+                value={testsText}
+                onChange={(e) => setTestsText(e.target.value)}
+                rows={6}
+                spellCheck={false}
+                placeholder={'add(2, 3) ==> 5\nadd(-1, 1) ==> 0\nisPrime(7)'}
+                className="w-full resize-y rounded-lg border border-surface-border bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-slate-200 outline-none placeholder:text-slate-600 focus:border-accent"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                One per line: <code className="text-slate-400">expression ==&gt; expected</code> (deep
+                equality) or just an expression that must be truthy. Lines starting with{" "}
+                <code className="text-slate-400">//</code> are ignored. Each test has a 2s limit.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Models */}
@@ -377,7 +429,14 @@ export default function Home() {
           {selected
             .filter((id) => results[id])
             .map((id) => (
-              <ResultCard key={id} modelId={id} modelName={modelName(id)} result={results[id]} />
+              <ResultCard
+                key={id}
+                modelId={id}
+                modelName={modelName(id)}
+                result={results[id]}
+                render={getMode(runModeId).render}
+                tests={runTests}
+              />
             ))}
         </section>
       )}
@@ -387,7 +446,7 @@ export default function Home() {
           <div className="text-4xl">🎮</div>
           <p className="mt-3 text-slate-300">Pick a few models, choose a prompt, and hit Run.</p>
           <p className="mt-1 text-sm text-slate-500">
-            Each model builds the same game — watch them race and compare the results live.
+            Every model gets the same prompt — watch them race and compare the results live.
           </p>
         </section>
       )}

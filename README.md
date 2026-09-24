@@ -1,13 +1,24 @@
 # 🏟️ Model Arena
 
-Run **one coding prompt across multiple AI models** at the same time (via
-[OpenRouter](https://openrouter.ai)) and compare the generated code — and the
-**live, playable game** — side by side.
+Run **one prompt across multiple AI models** at the same time (via
+[OpenRouter](https://openrouter.ai)) and compare the results side by side —
+**live, playable games**, **chat answers**, or **SVG drawings**.
 
 ![side-by-side model comparison](https://openrouter.ai) <!-- replace with a screenshot after deploying -->
 
 ## Features
 
+- **Four comparison modes** — 🎮 Game / App (runnable HTML preview),
+  💬 Chat (rendered markdown answers), 🖼️ SVG Art (models draw with code), and
+  🧪 Code Tests (models write a JS function, your test cases score it).
+  Modes live in `lib/modes.ts`, so adding another is one entry.
+- **Code Tests scoring** — write tests one per line as `expression ==> expected`
+  (deep equality) or a bare expression that must be truthy. Each model's code runs
+  in a sandboxed Web Worker with a 2s limit per test, and every card gets a pass
+  score plus IDE-style expected/received values. Tests can be hidden from the
+  models (default) or shown to them.
+- **IDE-style syntax highlighting** (VS Code Dark+ colors) for generated code and test output.
+- **Speed stats** per model — time to first token, approximate output tokens and tokens/sec.
 - **Fan-out to many models at once** — pick up to 6 models and run them in parallel.
 - **Live model catalogue** — the model list is pulled from OpenRouter's
   `/models` API, so you always see everything that's available (300+ models),
@@ -74,6 +85,10 @@ Generated code runs inside an `<iframe sandbox="allow-scripts …">` **without**
 page, cookies, or the visitor's API key. `localStorage` inside a generated game
 will be unavailable by design — that's the trade-off for safely running
 arbitrary model output.
+
+Code Tests run the same way: inside a Web Worker created within a sandboxed,
+opaque-origin iframe. A test that hangs is killed after 2 seconds and the worker
+is replaced, so an infinite loop in model code can't freeze the page.
 
 ## Tech
 

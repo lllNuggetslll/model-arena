@@ -47,3 +47,136 @@ body {
 .animate-pulse-dot {
   animation: pulse-dot 1s ease-in-out infinite;
 }
+
+/* Rendered markdown in Chat mode result cards. */
+.markdown > * + * {
+  margin-top: 0.75em;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  @apply font-semibold text-white;
+  margin-top: 1.1em;
+}
+.markdown h1 {
+  @apply text-lg;
+}
+.markdown h2 {
+  @apply text-base;
+}
+.markdown strong {
+  @apply font-semibold text-white;
+}
+.markdown a {
+  @apply text-indigo-400 underline hover:text-indigo-300;
+}
+.markdown ul {
+  @apply list-disc pl-5;
+}
+.markdown ol {
+  @apply list-decimal pl-5;
+}
+.markdown li + li {
+  margin-top: 0.25em;
+}
+.markdown blockquote {
+  @apply border-l-2 border-surface-border pl-3 text-slate-400;
+}
+.markdown code {
+  @apply rounded bg-slate-800/70 px-1 py-0.5 font-mono text-[0.85em] text-indigo-200;
+}
+.markdown pre {
+  @apply overflow-x-auto rounded-lg bg-[#0a0c11] p-3;
+}
+.markdown pre code {
+  @apply bg-transparent p-0 text-slate-200;
+}
+.markdown table {
+  @apply w-full border-collapse text-xs;
+}
+.markdown th,
+.markdown td {
+  @apply border border-surface-border px-2 py-1 text-left align-top;
+}
+.markdown th {
+  @apply bg-surface font-semibold text-slate-100;
+}
+.markdown hr {
+  @apply border-surface-border;
+}
+
+/* Syntax highlighting — VS Code "Dark+" colors for highlight.js tokens. */
+.hljs {
+  color: #d4d4d4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.hljs-keyword,
+.hljs-literal,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-tag {
+  color: #569cd6;
+}
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-type {
+  color: #4ec9b0;
+}
+.hljs-title,
+.hljs-title.function_ {
+  color: #dcdcaa;
+}
+.hljs-string,
+.hljs-template-tag,
+.hljs-meta .hljs-string {
+  color: #ce9178;
+}
+.hljs-subst,
+.hljs-template-variable {
+  color: #d4d4d4;
+}
+.hljs-number {
+  color: #b5cea8;
+}
+.hljs-regexp {
+  color: #d16969;
+}
+.hljs-comment,
+.hljs-quote {
+  color: #6a9955;
+  font-style: italic;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-property,
+.hljs-params,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #9cdcfe;
+}
+.hljs-meta,
+.hljs-doctag {
+  color: #c586c0;
+}
+.hljs-section {
+  color: #569cd6;
+  font-weight: 600;
+}
+.hljs-bullet {
+  color: #6796e6;
+}
+.hljs-code {
+  color: #ce9178;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
+.hljs-link {
+  color: #3794ff;
+  text-decoration: underline;
+}

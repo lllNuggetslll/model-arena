@@ -36,6 +36,17 @@ export function extractHtml(raw: string): string | null {
 }
 
 /**
+ * Pull an <svg> element out of a model's response and wrap it in a minimal
+ * document that centers and scales it to the preview frame.
+ */
+export function extractSvg(raw: string): string | null {
+  if (!raw) return null;
+  const match = raw.match(/<svg[\s>][\s\S]*?<\/svg>/i);
+  if (!match) return null;
+  return `<!doctype html><html><head><style>html,body{margin:0;height:100%;background:#fff}body{display:flex;align-items:center;justify-content:center}svg{max-width:100%;max-height:100%;width:100%;height:100%}</style></head><body>${match[0]}</body></html>`;
+}
+
+/**
  * Strip a single leading/trailing markdown code fence so the "Code" tab shows
  * clean source when the whole reply is one code block.
  */
